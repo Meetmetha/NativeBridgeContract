@@ -1,6 +1,7 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./SafeMath.sol";
 import "./SafeCast.sol";
@@ -8,6 +9,8 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract Maintainer is Pausable, AccessControl, Ownable, SafeMath {
     // Variables & Structs
+    address public protocolToken;
+    uint256 public protocolTokenlockAmount;
     uint8   public relayerThreshold; // 5 
     bytes32 public constant RELAYER_ROLE = keccak256("RELAYER_ROLE");
     bytes32 public constant VETO_ROLE = keccak256("VETO_ROLE");
@@ -23,10 +26,13 @@ contract Maintainer is Pausable, AccessControl, Ownable, SafeMath {
         uint256 sourceChainNonce;
         uint40  proposedBlock;
     }
+    mapping(address => uint256) public depositedTokens;
     mapping(bytes32 => address[]) public votersByProposal;
     mapping(bytes32 => Proposal) public proposals;
 
-    constructor (uint8 _initialRelayerThreshold) {
+    constructor (uint8 _initialRelayerThreshold,address _protocolToken,uint256 _protocolTokenlockAmount) {
+        protocolToken = _protocolToken;
+        protocolTokenlockAmount = _protocolTokenlockAmount;
         relayerThreshold = _initialRelayerThreshold;
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
@@ -92,6 +98,22 @@ contract Maintainer is Pausable, AccessControl, Ownable, SafeMath {
 
     function getProposalHash(address _sourceChainAddress, bytes32 _destinationAddress, uint16 _sourceChain, uint16 _destinationChain , uint256 _sourceNonce) public view returns(bytes32){
         return keccak256(abi.encodePacked(_sourceChainAddress, _destinationAddress,_sourceChain,_destinationChain,_sourceNonce));
+    }
+
+    // Stake the required amount of protocol tokens and recieve relayerRole
+    function becomeRelayer(uint256 _stakeAmount) external {
+        require(_stakeAmount >= protocolTokenlockAmount,"Stake Amount not enough");
+        require(IERC20(protocolToken).allowance(msg.sender, address(this)) >= protocolTokenlockAmount, "Insufficient allowance");
+        IERC20(protocolToken).transferFrom(msg.sender, address(this), _stakeAmount);
+        depositedTokens[msg.sender] = depositedTokens[msg.sender] + _stakeAmount;
+        _grantRole(RELAYER_ROLE, msg.sender);
+    }
+
+    function exitRelayerRole() external {
+        require(hasRole(RELAYER_ROLE, msg.sender),"You don't have relayer role");
+        IERC20(protocolToken).transfer(msg.sender, depositedTokens[msg.sender]);
+        depositedTokens[msg.sender]=0;
+        _revokeRole(RELAYER_ROLE, msg.sender);
     }
     
     // onlyVeto Functions
@@ -163,7 +185,6 @@ contract Maintainer is Pausable, AccessControl, Ownable, SafeMath {
         emit ProposalExecuted(proposalHash, relayerThreshold, proposalData.sourceChainAddress, proposalData.destinationChainAddress, proposalData.sourceChain, proposalData.destinationChain, proposalData.sourceChainNonce, proposalData._status);
     }
 
-
     // onlyOwner functions
     function CancelProposalByOwner(bytes32 proposalHash) public onlyOwner {
         Proposal memory proposalData = proposals[proposalHash];
@@ -176,11 +197,11 @@ contract Maintainer is Pausable, AccessControl, Ownable, SafeMath {
     function ForceExecuteProposal(bytes32 proposalHash) public onlyOwner {
         Proposal memory proposalData = proposals[proposalHash];
         proposalData._status = ProposalStatus.Executed;
-        emit ProposalExecuted(proposalHash, relayerThreshold, proposalData.sourceChainAddress, proposalData.destinationChainAddress, proposalData.sourceChain, proposalData.destinationChain, proposalData.sourcechainNonce);
+        emit ProposalExecuted(proposalHash, relayerThreshold, proposalData.sourceChainAddress, proposalData.destinationChainAddress, proposalData.sourceChain, proposalData.destinationChain, proposalData.sourceChainNonce, proposalData._status);
     }
 
-    function adminChangeRelayerThreshold(uint256 newThreshold) external onlyOwner {
-        relayerThreshold = newThreshold.toUint8();
+    function adminChangeRelayerThreshold(uint8 newThreshold) external onlyOwner {
+        relayerThreshold = newThreshold;
         emit RelayerThresholdChanged(newThreshold);
     }
 
@@ -200,9 +221,4 @@ contract Maintainer is Pausable, AccessControl, Ownable, SafeMath {
         IERC20 token = IERC20(tokenAddress);
         token.transfer(owner(), token.balanceOf(address(this)));
     }
-}
-
-interface IERC20 {
-    function transfer(address to, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
 }

@@ -39,6 +39,10 @@ contract bridgeRouter is Ownable, ReentrancyGuard, Pausable {
         emit BridgeInitiated(msg.sender, addressTo, msg.value, destinationChain, block.timestamp, depositNonce, hash);
     }
 
+    function isBridgeHashProcessed(bytes32 hash) public view returns (bool){
+        return hashed[hash];
+    }
+
     // OnlyRelayer
     function processBridgeRequest(address user,uint256 bridgeAmount,bytes32 hash) external payable whenNotPaused onlyRelayer {
         require(!hashed[hash],"Bridge already processed");

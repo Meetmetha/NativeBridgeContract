@@ -8,14 +8,16 @@ contract bridgeRouter is Ownable, ReentrancyGuard, Pausable {
     address public pool;
     address public relayer;
     uint256 public depositNonce;
+    uint16 public sourceChain;
     struct destinationId {
         bool isActive;
     }
     mapping(bytes32 => bool) public hashed;
     mapping(uint16 => destinationId) public chainID;
 
-    constructor(address _relayer) Ownable(msg.sender) payable {
+    constructor(address _relayer,uint16 _sourceChain) Ownable(msg.sender) payable {
         relayer = _relayer;
+        sourceChain = _sourceChain;
     }
 
     // Modifiers
@@ -25,7 +27,7 @@ contract bridgeRouter is Ownable, ReentrancyGuard, Pausable {
     }
 
     // Events
-    event BridgeInitiated(address from,address addressTo,uint256 inputAmount,uint16 destinationChain,uint256 timestamp,uint256 sourceNonce, bytes32 hash);
+    event BridgeInitiated(address from,address addressTo,uint256 inputAmount,uint16 sourceChain, uint16 destinationChain,uint256 timestamp,uint256 sourceNonce, bytes32 hash);
     event BridgeSuccess(address user,uint256 bridgeAmount, bytes32 hash);
 
     // User functions
@@ -34,9 +36,9 @@ contract bridgeRouter is Ownable, ReentrancyGuard, Pausable {
         require(data.isActive,"Destination chain paused or Invalid");
         (bool success,) = pool.call{value: msg.value}("");
         require(success,"Error depositing token to Pool");
-        bytes32 hash = keccak256(abi.encodePacked(msg.sender, addressTo, msg.value, destinationChain, block.timestamp, depositNonce));
+        bytes32 hash = keccak256(abi.encodePacked(msg.sender, addressTo, msg.value, sourceChain, destinationChain, block.timestamp, depositNonce));
+        emit BridgeInitiated(msg.sender, addressTo, msg.value, sourceChain, destinationChain, block.timestamp, depositNonce, hash);
         depositNonce++;
-        emit BridgeInitiated(msg.sender, addressTo, msg.value, destinationChain, block.timestamp, depositNonce, hash);
     }
 
     function isBridgeHashProcessed(bytes32 hash) public view returns (bool){
@@ -44,7 +46,7 @@ contract bridgeRouter is Ownable, ReentrancyGuard, Pausable {
     }
 
     // OnlyRelayer
-    function processBridgeRequest(address user,uint256 bridgeAmount,bytes32 hash) external payable whenNotPaused onlyRelayer {
+    function executeBridgeRequest(address user,uint256 bridgeAmount,bytes32 hash) external payable whenNotPaused nonReentrant onlyRelayer {
         require(!hashed[hash],"Bridge already processed");
         hashed[hash]=true;
         IPool(pool).pullLiquidity(bridgeAmount);
@@ -63,7 +65,6 @@ contract bridgeRouter is Ownable, ReentrancyGuard, Pausable {
         destinationId storage data = chainID[id];
         data.isActive = false;
     }
-
 
     function pause() public onlyOwner{
         _pause();

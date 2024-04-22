@@ -25,18 +25,18 @@ contract bridgeRouter is Ownable, ReentrancyGuard, Pausable {
     }
 
     // Events
-    event BridgeInitiated(address user,uint256 inputAmount,uint16 destinationChain,uint256 destinationAddress,uint256 sourceNonce, bytes32 hash);
+    event BridgeInitiated(address from,address addressTo,uint256 inputAmount,uint16 destinationChain,uint256 destinationAddress,uint256 sourceNonce, bytes32 hash);
     event BridgeSuccess(address user,uint256 bridgeAmount, bytes32 hash);
 
     // User functions
-    function bridgeTo(uint16 destinationChain) external payable whenNotPaused nonReentrant {
+    function bridgeTo(uint16 destinationChain, address addressTo) external payable whenNotPaused nonReentrant {
         destinationId storage data = chainID[destinationChain];
         require(data.isActive,"Destination chain paused or Invalid");
         (bool success,) = pool.call{value: msg.value}("");
         require(success,"Error depositing token to Pool");
-        bytes32 hash = keccak256(abi.encodePacked(msg.sender, msg.value, destinationChain, block.timestamp, depositNonce));
+        bytes32 hash = keccak256(abi.encodePacked(msg.sender, addressTo, msg.value, destinationChain, block.timestamp, depositNonce));
         depositNonce++;
-        emit BridgeInitiated(msg.sender, msg.value, destinationChain, block.timestamp, depositNonce, hash);
+        emit BridgeInitiated(msg.sender, addressTo, msg.value, destinationChain, block.timestamp, depositNonce, hash);
     }
 
     // OnlyRelayer

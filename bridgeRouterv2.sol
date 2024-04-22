@@ -25,7 +25,7 @@ contract bridgeRouter is Ownable, ReentrancyGuard, Pausable {
     }
 
     // Events
-    event BridgeInitiated(address from,address addressTo,uint256 inputAmount,uint16 destinationChain,uint256 destinationAddress,uint256 sourceNonce, bytes32 hash);
+    event BridgeInitiated(address from,address addressTo,uint256 inputAmount,uint16 destinationChain,uint256 timestamp,uint256 sourceNonce, bytes32 hash);
     event BridgeSuccess(address user,uint256 bridgeAmount, bytes32 hash);
 
     // User functions

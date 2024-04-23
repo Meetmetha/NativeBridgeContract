@@ -32,6 +32,7 @@ contract bridgeRouter is Ownable, ReentrancyGuard, Pausable {
 
     // User functions
     function bridgeTo(uint16 destinationChain, address addressTo) external payable whenNotPaused nonReentrant {
+        require(msg.value >= 0,"Bridge Amount is Zero");
         destinationId storage data = chainID[destinationChain];
         require(data.isActive,"Destination chain paused or Invalid");
         (bool success,) = pool.call{value: msg.value}("");

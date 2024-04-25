@@ -17,6 +17,25 @@ contract bridgeMaintainer is Pausable, AccessControl, Ownable {
     mapping(uint16 => destinationId) public chainID;
     mapping(bytes32 => bool) public hashedBridgeRequests;
 
+    struct BridgeRequest {
+        address from;
+        address addressTo;
+        uint256 inputAmount;
+        uint256 outputAmount;
+        uint16 sourceChain;
+        uint16 destinationChain;
+        uint256 timestamp;
+        uint256 depositNonce;
+        bytes32 hash;
+    }
+    struct StamperSigns {
+        bytes32 signedMessageHash;
+        address[] stamperIds;
+        uint8[] _v;
+        bytes32[] _r;
+        bytes32[] _s;
+    }
+
     constructor (uint8 _quorumThreshold, address _maintainer) Ownable(msg.sender) {
         quorumThreshold = _quorumThreshold;
         maintainer = _maintainer;
@@ -54,25 +73,21 @@ contract bridgeMaintainer is Pausable, AccessControl, Ownable {
         require(stamperIds.length >= quorumThreshold,"Signature does not meet threshold requirement");
         for(uint8 i=0;i<stamperIds.length;i++){
             address signer = VerifyMessageSignature(_hashedMessage,_v[i],_r[i],_s[i]);
+            require(WhitelistedStampers[signer],"Stamper is not whitelisted");
             require(stamperIds[i] == signer,"Stamper signature mismatch");
         }
     }
 
     // onlyMaintainer
-    function processBridgeRequest(address from,address addressTo, uint256 inputAmount, uint256 outputAmount, uint16 sourceChain, uint16 destinationChain, uint256 timestamp, uint256 depositNonce, bytes32 hash,
-        bytes32 signedMessageHash, 
-        address[] memory stamperIds, 
-        uint8[] memory _v,
-        bytes32[] memory _r,
-        bytes32[] memory _s) external whenNotPaused onlyMaintainer {
-        require(!hashedBridgeRequests[hash],"Bridge request already processed");
+    function processBridgeRequest(BridgeRequest memory request,StamperSigns memory signs) external whenNotPaused onlyMaintainer {
+        require(!hashedBridgeRequests[request.hash],"Bridge request already processed");
         //bytes32 derivedHash = keccak256(abi.encodePacked(from, addressTo, inputAmount, destinationChain, timestamp, depositNonce));
         //require(derivedHash == hash,"Hash doesn't Match");
         // Check for stampers
-        verifyMessageByStampers(signedMessageHash,stamperIds,_v,_r,_s);
-        hashedBridgeRequests[hash]=true;
+        verifyMessageByStampers(signs.signedMessageHash,signs.stamperIds,signs._v,signs._r,signs._s);
+        hashedBridgeRequests[request.hash]=true;
         processedRequests++;
-        emit ExecuteBridgeRequest(from,addressTo,inputAmount,outputAmount,sourceChain,destinationChain,hash);
+        emit ExecuteBridgeRequest(request.from,request.addressTo,request.inputAmount,request.outputAmount,request.sourceChain,request.destinationChain,request.hash);
     }
 
     // onlyOwner functions
